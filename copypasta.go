@@ -6,6 +6,7 @@ import (
 	"github.com/ethereum/go-ethereum/rlp"
 	"io"
 	"math/big"
+	"strings"
 )
 
 // hashOrNumber is a combined field for specifying an origin block.
@@ -68,3 +69,41 @@ type statusData struct {
 	GenesisBlock    common.Hash
 }
 
+type keyValueEntry struct {
+	Key   string
+	Value rlp.RawValue
+}
+type keyValueList []keyValueEntry
+
+type keyValueMap map[string]rlp.RawValue
+
+func (kv keyValueList) String() string{
+	var out []string
+	for k,v := range kv{
+		out = append(out, fmt.Sprintf("%v: %v", k, v))
+	}
+	return strings.Join(out, "\n")
+}
+
+func (l keyValueList) add(key string, val interface{}) keyValueList {
+	var entry keyValueEntry
+	entry.Key = key
+	if val == nil {
+		val = uint64(0)
+	}
+	enc, err := rlp.EncodeToBytes(val)
+	if err == nil {
+		entry.Value = enc
+	}
+	return append(l, entry)
+}
+
+func (l keyValueList) decode() (keyValueMap, uint64) {
+	m := make(keyValueMap)
+	var size uint64
+	for _, entry := range l {
+		m[entry.Key] = entry.Value
+		size += uint64(len(entry.Key)) + uint64(len(entry.Value)) + 8
+	}
+	return m, size
+}
