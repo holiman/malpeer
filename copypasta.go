@@ -3,6 +3,8 @@ package main
 import (
 	"fmt"
 	"github.com/ethereum/go-ethereum/common"
+	"github.com/ethereum/go-ethereum/core/types"
+	"github.com/ethereum/go-ethereum/les"
 	"github.com/ethereum/go-ethereum/rlp"
 	"io"
 	"math/big"
@@ -15,12 +17,13 @@ type hashOrNumber struct {
 	Number uint64      // Block hash from which to retrieve headers (excludes Hash)
 }
 
-func (h hashOrNumber) String() string{
+func (h hashOrNumber) String() string {
 	if h.Hash == (common.Hash{}) {
 		return fmt.Sprintf("number %d", h.Number)
 	}
-	return fmt.Sprintf("hash %v" , h.Hash.String())
+	return fmt.Sprintf("hash %v", h.Hash.String())
 }
+
 // EncodeRLP is a specialized encoder for hashOrNumber to encode only one of the
 // two contained union fields.
 func (hn *hashOrNumber) EncodeRLP(w io.Writer) error {
@@ -51,7 +54,6 @@ func (hn *hashOrNumber) DecodeRLP(s *rlp.Stream) error {
 	return err
 }
 
-
 // getBlockHeadersData represents a block header query.
 type getBlockHeadersData struct {
 	Origin  hashOrNumber // Block from which to retrieve headers
@@ -60,7 +62,7 @@ type getBlockHeadersData struct {
 	Reverse bool         // Query direction (false = rising towards latest, true = falling towards genesis)
 }
 
-// statusData is the network packet for the status message.
+// statusData is the network packet for the ethStatus message.
 type statusData struct {
 	ProtocolVersion uint32
 	NetworkId       uint64
@@ -77,9 +79,9 @@ type keyValueList []keyValueEntry
 
 type keyValueMap map[string]rlp.RawValue
 
-func (kv keyValueList) String() string{
+func (kv keyValueList) String() string {
 	var out []string
-	for k,v := range kv{
+	for k, v := range kv {
 		out = append(out, fmt.Sprintf("%v: %v", k, v))
 	}
 	return strings.Join(out, "\n")
@@ -106,4 +108,70 @@ func (l keyValueList) decode() (keyValueMap, uint64) {
 		size += uint64(len(entry.Key)) + uint64(len(entry.Value)) + 8
 	}
 	return m, size
+}
+
+func (m keyValueMap) get(key string, val interface{}) error {
+	enc, ok := m[key]
+	if !ok {
+		return fmt.Errorf("Key [%v] missing from list", key)
+	}
+	if val == nil {
+		return nil
+	}
+	return rlp.DecodeBytes(enc, val)
+}
+
+// announceData is the network packet for the block announcements.
+type announceData struct {
+	Hash       common.Hash // Hash of one particular block being announced
+	Number     uint64      // Number of one particular block being announced
+	Td         *big.Int    // Total difficulty of one particular block being announced
+	ReorgDepth uint64
+	Update     keyValueList
+}
+
+// announceDataMalformed has an extra item
+type announceDataMalformed struct {
+	Hash       common.Hash // Hash of one particular block being announced
+	Number     uint64      // Number of one particular block being announced
+	Td         *big.Int    // Total difficulty of one particular block being announced
+	ReorgDepth uint64
+	Update     keyValueList
+	Foo			uint64
+}
+
+// testCostList returns a dummy request cost list used by tests
+func testCostList() les.RequestCostList {
+
+	return les.RequestCostList{
+		{BaseCost: 0, MsgCode: les.GetBlockHeadersMsg, ReqCost: 0},
+		{BaseCost: 0, MsgCode: les.GetBlockBodiesMsg, ReqCost: 0},
+		{BaseCost: 0, MsgCode: les.GetReceiptsMsg, ReqCost: 0},
+		{BaseCost: 0, MsgCode: les.GetCodeMsg, ReqCost: 0},
+		{BaseCost: 0, MsgCode: les.GetProofsV2Msg, ReqCost: 0},
+		{BaseCost: 0, MsgCode: les.GetHelperTrieProofsMsg, ReqCost: 0},
+		{BaseCost: 0, MsgCode: les.SendTxV2Msg, ReqCost: 0},
+		{BaseCost: 0, MsgCode: les.GetTxStatusMsg, ReqCost: 0},
+	}
+}
+
+// newBlockData is the network packet for the block propagation message.
+type newBlockData struct {
+	Block *types.Block
+	TD    *big.Int
+}
+
+// blockBody represents the data content of a single block.
+type blockBody struct {
+	Transactions []*types.Transaction // Transactions contained within a block
+	Uncles       []*types.Header      // Uncles contained within a block
+}
+
+// blockBodiesData is the network packet for block content distribution.
+type blockBodiesData []*blockBody
+
+// newBlockHashesData is the network packet for the block announcements.
+type newBlockHashesData []struct {
+	Hash   common.Hash // Hash of one particular block being announced
+	Number uint64      // Number of one particular block being announced
 }
