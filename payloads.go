@@ -3,6 +3,7 @@ package main
 import (
 	"crypto/rand"
 	"github.com/ethereum/go-ethereum/common"
+	"github.com/ethereum/go-ethereum/common/hexutil"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/les"
 	"math/big"
@@ -21,6 +22,11 @@ func veryLargeBuffer(megabytes int) []byte {
 	buf := make([]byte, megabytes*1024*1024)
 	rand.Read(buf)
 	return buf
+}
+func veryLargeString(megabytes int) string {
+	buf := make([]byte, megabytes*1024*1024)
+	rand.Read(buf)
+	return string(hexutil.Encode(buf))
 }
 
 // Returns a random hash
